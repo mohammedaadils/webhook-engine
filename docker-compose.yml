@@ -1,0 +1,61 @@
+services:
+
+  # ── MySQL 8 database ────────────────────────────────────────────────────────
+  db:
+    image: mysql:8.0
+    container_name: webhook-db
+    restart: unless-stopped
+
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE:      ${DB_NAME}
+      MYSQL_USER:          ${DB_USER}
+      MYSQL_PASSWORD:      ${DB_PASSWORD}
+
+    ports:
+      - "3306:3306"   # Expose locally for DBeaver / MySQL Workbench access
+
+    volumes:
+      - mysql_data:/var/lib/mysql   # Persist data across container restarts
+
+    # Healthcheck: Docker will wait for MySQL to be genuinely ready
+    # before marking this container healthy.
+    # mysqladmin ping is lightweight and doesn't need a full connection.
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost",
+             "-u", "root", "--password=${DB_PASSWORD}"]
+      interval: 10s   # Check every 10 seconds
+      timeout: 5s     # Fail the check if no response in 5 seconds
+      retries: 5      # After 5 consecutive failures → unhealthy
+      start_period: 30s  # Grace period on first startup (MySQL is slow to init)
+
+  # ── Spring Boot application ─────────────────────────────────────────────────
+  app:
+    build:
+      context: .        # Dockerfile is in the project root
+      dockerfile: Dockerfile
+    container_name: webhook-app
+    restart: unless-stopped
+
+    ports:
+      - "8080:8080"     # Expose REST API to host / EC2 security group
+
+    environment:
+      # These values are read from .env file (never hardcoded here).
+      # application-prod.properties reads them as ${DB_HOST}, ${DB_NAME}, etc.
+      DB_HOST:     db            # Docker service name — Docker DNS resolves this
+      DB_PORT:     3306
+      DB_NAME:     ${DB_NAME}
+      DB_USER:     ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+
+    # App container waits for db to pass its healthcheck before starting.
+    # Without this, Spring Boot tries to connect while MySQL is still
+    # initialising and the app crashes on startup.
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  mysql_data:
+    driver: local
