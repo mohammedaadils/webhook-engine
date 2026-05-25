@@ -1,0 +1,225 @@
+{
+  "info": {
+    "name": "Webhook Delivery Engine",
+    "description": "Complete Postman collection for the Webhook Delivery Engine API.\n\nTwo environments pre-configured:\n- LOCAL:  http://localhost:8080\n- EC2:    http://13.201.194.84:8080\n\nSwitch the {{baseUrl}} variable to toggle between local and EC2.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://13.201.194.84:8080",
+      "description": "Switch to http://localhost:8080 for local testing"
+    },
+    {
+      "key": "eventId",
+      "value": "1",
+      "description": "Set this after calling /emit — use the id from the response"
+    },
+    {
+      "key": "subscriberId",
+      "value": "1",
+      "description": "Set this after calling /subscribe — use the id from the response"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Register Subscriber",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/webhook/subscribe",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "webhook", "subscribe"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"eventType\": \"order.created\",\n  \"callbackUrl\": \"https://webhook.site/8bcc8099-5d7c-45e0-be0b-f2aa8e46d21a\",\n  \"secretKey\": \"my-secret-key\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Register a subscriber URL for a specific event type.\n\nAfter calling this, copy the 'id' from the response and set it as the {{subscriberId}} variable."
+      },
+      "response": [
+        {
+          "name": "201 Created — Subscriber registered",
+          "status": "Created",
+          "code": 201,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"success\": true,\n  \"message\": \"Subscriber registered successfully\",\n  \"data\": {\n    \"id\": 1,\n    \"eventType\": \"order.created\",\n    \"callbackUrl\": \"https://webhook.site/8bcc8099-5d7c-45e0-be0b-f2aa8e46d21a\",\n    \"active\": true,\n    \"createdAt\": \"2026-05-25T07:00:00\"\n  },\n  \"timestamp\": \"2026-05-25T07:00:00\"\n}"
+        },
+        {
+          "name": "400 Bad Request — Validation failure",
+          "status": "Bad Request",
+          "code": 400,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"success\": false,\n  \"message\": \"Validation failed: callbackUrl must be a valid URL\",\n  \"timestamp\": \"2026-05-25T07:00:00\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "2. Emit Event",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/webhook/emit",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "webhook", "emit"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"eventType\": \"order.created\",\n  \"payload\": \"{\\\"orderId\\\": 42, \\\"amount\\\": 999, \\\"customer\\\": \\\"Aadil\\\"}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Emit an event and trigger async fan-out to all active subscribers for that event type.\n\nReturns immediately with status PENDING.\nUse GET /logs/{eventId} to track delivery progress.\n\nAfter calling this, copy the 'id' from the response and set it as the {{eventId}} variable."
+      },
+      "response": [
+        {
+          "name": "200 OK — Event emitted",
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"success\": true,\n  \"message\": \"Event emitted successfully. Fan-out dispatched asynchronously.\",\n  \"data\": {\n    \"id\": 1,\n    \"eventType\": \"order.created\",\n    \"payload\": \"{\\\"orderId\\\": 42, \\\"amount\\\": 999, \\\"customer\\\": \\\"Aadil\\\"}\",\n    \"status\": \"PENDING\",\n    \"emittedAt\": \"2026-05-25T07:00:00\"\n  },\n  \"timestamp\": \"2026-05-25T07:00:00\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "3. Get Delivery Logs",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/webhook/logs/{{eventId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "webhook", "logs", "{{eventId}}"]
+        },
+        "description": "Get the full delivery audit trail for a specific event.\n\nShows every HTTP attempt made to every subscriber:\n- attemptNumber: 1, 2, or 3\n- status: SUCCESS / RETRYING / FAILED\n- responseCode: HTTP status returned by subscriber\n- attemptedAt: timestamp of the attempt\n\nCall this a few seconds after /emit to see results.\nCall again after 30s to see retry attempts appear."
+      },
+      "response": [
+        {
+          "name": "200 OK — Delivery logs",
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"success\": true,\n  \"message\": \"Delivery logs retrieved: 2 attempt(s)\",\n  \"data\": [\n    {\n      \"id\": 1,\n      \"eventId\": 1,\n      \"subscriberId\": 1,\n      \"callbackUrl\": \"https://webhook.site/8bcc8099-5d7c-45e0-be0b-f2aa8e46d21a\",\n      \"attemptNumber\": 1,\n      \"status\": \"SUCCESS\",\n      \"responseCode\": 200,\n      \"attemptedAt\": \"2026-05-25T07:00:01\"\n    },\n    {\n      \"id\": 2,\n      \"eventId\": 1,\n      \"subscriberId\": 2,\n      \"callbackUrl\": \"https://invalid-url.example.com\",\n      \"attemptNumber\": 1,\n      \"status\": \"RETRYING\",\n      \"responseCode\": null,\n      \"attemptedAt\": \"2026-05-25T07:00:01\"\n    }\n  ],\n  \"timestamp\": \"2026-05-25T07:00:05\"\n}"
+        },
+        {
+          "name": "404 Not Found — Event not found",
+          "status": "Not Found",
+          "code": 404,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"success\": false,\n  \"message\": \"Event not found: id=99\",\n  \"timestamp\": \"2026-05-25T07:00:00\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "4. List Active Subscribers",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/webhook/subscribers",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "webhook", "subscribers"]
+        },
+        "description": "List all currently active subscribers across all event types.\n\nDeactivated subscribers (via DELETE /unsubscribe) will not appear here."
+      },
+      "response": [
+        {
+          "name": "200 OK — Active subscribers",
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"success\": true,\n  \"message\": \"Active subscribers: 2\",\n  \"data\": [\n    {\n      \"id\": 1,\n      \"eventType\": \"order.created\",\n      \"callbackUrl\": \"https://webhook.site/8bcc8099-5d7c-45e0-be0b-f2aa8e46d21a\",\n      \"active\": true,\n      \"createdAt\": \"2026-05-25T07:00:00\"\n    },\n    {\n      \"id\": 2,\n      \"eventType\": \"payment.completed\",\n      \"callbackUrl\": \"https://webhook.site/another-uuid\",\n      \"active\": true,\n      \"createdAt\": \"2026-05-25T07:01:00\"\n    }\n  ],\n  \"timestamp\": \"2026-05-25T07:05:00\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "5. Unsubscribe",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/webhook/unsubscribe/{{subscriberId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "webhook", "unsubscribe", "{{subscriberId}}"]
+        },
+        "description": "Soft-delete a subscriber by ID.\n\nSets is_active = false. The record is kept in the DB for audit purposes.\nThe subscriber will no longer receive fan-out calls after this."
+      },
+      "response": [
+        {
+          "name": "200 OK — Subscriber deactivated",
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"success\": true,\n  \"message\": \"Subscriber deactivated successfully\",\n  \"timestamp\": \"2026-05-25T07:00:00\"\n}"
+        },
+        {
+          "name": "404 Not Found — Subscriber not found",
+          "status": "Not Found",
+          "code": 404,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"success\": false,\n  \"message\": \"Subscriber not found: id=99\",\n  \"timestamp\": \"2026-05-25T07:00:00\"\n}"
+        }
+      ]
+    }
+  ]
+}
